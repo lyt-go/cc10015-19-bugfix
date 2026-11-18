@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.predictions import build_seed_batches
+
 SEED_ROWS: dict[str, list[dict[str, Any]]] = {
     "experiment": [{'id': 1,
   'status': '草稿',
@@ -86,8 +88,8 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
   '统计粒度': '指标定义样例1',
   '时间窗口': '2026-09-01',
   '基准取值': '指标定义样例1',
-  '精度位数': '指标定义样例1',
-  '口径版本': '指标定义样例1'},
+  '精度位数': '2',
+  '口径版本': 'v1'},
  {'id': 2,
   'status': '待校验',
   'pending': True,
@@ -98,8 +100,8 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
   '统计粒度': '指标定义样例2',
   '时间窗口': '2026-09-02',
   '基准取值': '指标定义样例2',
-  '精度位数': '指标定义样例2',
-  '口径版本': '指标定义样例2'},
+  '精度位数': '3',
+  '口径版本': 'v2'},
  {'id': 3,
   'status': '已生效',
   'pending': False,
@@ -110,8 +112,8 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
   '统计粒度': '指标定义样例3',
   '时间窗口': '2026-09-03',
   '基准取值': '指标定义样例3',
-  '精度位数': '指标定义样例3',
-  '口径版本': '指标定义样例3'}],
+  '精度位数': '4',
+  '口径版本': 'v3'}],
     "ab_result": [{'id': 1,
   'status': '待分析',
   'pending': True,
@@ -653,3 +655,9 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
   '消费范围': '评估看板样例3',
   '看板版本': '评估看板样例3'}]
 }
+
+# 预测结果留档（V019）：按模型配置预置几个训练批次，覆盖“同周期双批次”和失败批次。
+SEED_ROWS["forecast_prediction"] = build_seed_batches(
+    SEED_ROWS.get("forecast_model", []),
+    SEED_ROWS.get("metric_def", []),
+)

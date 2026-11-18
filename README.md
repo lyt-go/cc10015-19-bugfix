@@ -75,5 +75,22 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+## 预测结果留档（V019）
+
+预测结果不再在读取时随机生成，而是按训练批次留档在 `forecast_prediction` 表里：
+
+- `GET /api/forecast_model/predictions`：先按筛选条件（模型编号、预测对象、业务周期、
+  训练批次、指标编码、指标口径）锁定一个**完整**批次，再返回该批次的预测点。同一筛选
+  条件重复查询结果一致，响应头始终带 `trainingBatch` / `metricCode` / `precision` / `calibre`。
+- 批次口径 `policy`：`latest_complete`（默认，最近完成批次，同周期多批次时附旧批次对照）
+  或 `earliest_complete`（最早完整批次）。失败与训练中的批次永远不会被选中，显式筛选这类
+  批次时返回空列表并说明原因。
+- `GET /api/forecast_model/predictions/{id}?batch=…`：详情只在指定训练批次内读取同一条
+  留档预测点，列表与详情使用同一份结果。
+- `POST /api/forecast_model/{id}/retrain`：重新训练整段事务提交，失败整体回滚并保留最近
+  一次完整预测结果，不留下半成品批次。
+- 指标定义（`metric_def`）列表/详情会读取该指标最近完成批次的指标编码、精度位数与口径，
+  按当前列表筛选条件核对展示值，结果放在 `口径核对` 字段。
+
 领域：数据工程
 子方向：数据分析与数据应用

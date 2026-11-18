@@ -4,10 +4,15 @@
 """
 from __future__ import annotations
 
+import copy
+import threading
 import time
 from typing import Any
 
 from app.seed import SEED_ROWS
+
+# 内部明细表：随业务模块留档，但不作为独立模块计入运营概览。
+HIDDEN_MODULES = {"forecast_prediction"}
 
 
 class Store:
@@ -17,17 +22,28 @@ class Store:
         }
         self._versions: dict[str, int] = {name: 1 for name in self._tables}
         self._created_at: dict[str, float] = {name: time.time() for name in self._tables}
+        # 预测留档等写操作要一次提交多张表：整段读改写放在同一把锁里，
+        # 失败时用事务快照整体回滚，避免列表读到写了一半的批次。
+        self._lock = threading.RLock()
+
+    @property
+    def lock(self) -> threading.RLock:
+        return self._lock
 
     def module_names(self) -> list[str]:
-        return sorted(self._tables)
+        # 预测留档表是预测模型模块的内部明细，不单独作为业务模块出现在概览里。
+        return sorted(name for name in self._tables if name not in HIDDEN_MODULES)
 
     def rows(self, module: str) -> list[dict[str, Any]]:
         return self._tables.setdefault(module, [])
 
     def find(self, module: str, entry_id: int) -> dict[str, Any] | None:
         for row in self.rows(module):
-            if int(row.get("id", 0)) == entry_id:
-                return row
+            try:
+                if int(row.get("id", 0)) == entry_id:
+                    return row
+            except (TypeError, ValueError):
+                continue
         return None
 
     def find_by_field(self, module: str, field: str, value: Any) -> dict[str, Any] | None:
@@ -42,6 +58,14 @@ class Store:
     def next_id(self, module: str) -> int:
         rows = self.rows(module)
         return max((int(r.get("id", 0)) for r in rows), default=0) + 1
+
+    def snapshot(self, *modules: str) -> dict[str, list[dict[str, Any]]]:
+        """给事务留一份深拷贝，回滚时整表换回，不留下半截写入。"""
+        return {name: copy.deepcopy(self.rows(name)) for name in modules}
+
+    def restore(self, snapshot: dict[str, list[dict[str, Any]]]) -> None:
+        for name, rows in snapshot.items():
+            self._tables[name] = copy.deepcopy(rows)
 
     def bump_version(self, module: str) -> int:
         self._versions[module] = self._versions.get(module, 0) + 1

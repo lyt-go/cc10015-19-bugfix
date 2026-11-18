@@ -31,12 +31,20 @@
       <thead>
         <tr>
           <th v-for="column in columns" :key="column">{{ column }}</th>
+          <th>预测训练批次</th>
+          <th>预测精度位数</th>
+          <th>预测指标口径</th>
+          <th>口径核对</th>
           <th>可执行动作</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)" :data-testid="`row-${row.id}`" :data-status="String(row.status)">
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td data-testid="forecast-batch">{{ row['预测训练批次'] || '—' }}</td>
+          <td>{{ row['预测精度位数'] ?? '—' }}</td>
+          <td>{{ row['预测指标口径'] || '—' }}</td>
+          <td :data-testid="`check-${row['指标编号']}`">{{ row['口径核对'] ?? '—' }}</td>
           <td class="row-actions">
             <button
               v-for="action in actions"
@@ -51,7 +59,7 @@
           </td>
         </tr>
         <tr v-if="!rows.length">
-          <td :colspan="columns.length + 1" class="empty-state">暂无指标定义数据，可先登记指标定义</td>
+          <td :colspan="columns.length + 5" class="empty-state">暂无指标定义数据，可先登记指标定义</td>
         </tr>
       </tbody>
     </table>

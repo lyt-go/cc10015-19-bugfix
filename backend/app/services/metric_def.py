@@ -1,8 +1,13 @@
-"""指标定义业务规则：状态流转、字段校验与筛选口径都收在这里。"""
+"""指标定义业务规则：状态流转、字段校验与筛选口径都收在这里。
+
+V019：列表/详情会读取预测结果留档中该指标最近完成批次的指标编码与精度位数，
+按当前列表的筛选条件复核展示值；预测端没有完成批次时退回指标定义自身配置。
+"""
 from __future__ import annotations
 
 from typing import Any
 
+from app import predictions
 from app.store import store
 
 MODULE = "metric_def"
@@ -14,6 +19,28 @@ NEGATIVE_ACTIONS = []
 
 
 class MetricDefService:
+    def _attach_forecast_check(self, row: dict[str, Any]) -> bool:
+        """读取预测留档的确认结果，校验精度口径是否一致。返回是否通过核对。"""
+        code = str(row.get("指标编号") or "")
+        batch = predictions.confirmed_batch_for_metric(code)
+        if batch is None:
+            row["预测训练批次"] = ""
+            row["预测精度位数"] = None
+            row["预测指标口径"] = ""
+            row["口径核对"] = "无完整批次"
+            return True
+        precision = predictions.precision_of(row)
+        forecast_precision = int(batch.get("精度位数", precision) or precision)
+        forecast_calibre = str(batch.get("指标口径") or "")
+        calibre = str(row.get("口径版本") or "")
+        ok = forecast_precision == precision and (not forecast_calibre or forecast_calibre == calibre)
+        row["预测训练批次"] = batch.get("训练批次")
+        row["预测精度位数"] = forecast_precision
+        row["预测指标口径"] = forecast_calibre
+        row["预测点数"] = batch.get("预测点数")
+        row["口径核对"] = "一致" if ok else "精度或口径不一致"
+        return ok
+
     def list_entries(
         self,
         *,
@@ -23,9 +50,12 @@ class MetricDefService:
         page: int = 1,
         size: int = 20,
     ) -> tuple[list[dict[str, Any]], int]:
-        rows = store.rows(MODULE)
+        rows = [dict(row) for row in store.rows(MODULE)]
         for field, expected in (filters or {}).items():
             rows = [row for row in rows if expected.casefold() in str(row.get(field, "")).casefold()]
+        # 先按列表筛选条件缩小范围，再按这些行的指标编码去预测留档核对展示值。
+        for row in rows:
+            self._attach_forecast_check(row)
         if keyword:
             rows = [row for row in rows if keyword.casefold() in str(row.get("指标编号", "")).casefold()]
         if status:
@@ -35,7 +65,12 @@ class MetricDefService:
         return rows[start:start + size], total
 
     def get_entry(self, entry_id: int) -> dict[str, Any] | None:
-        return store.find(MODULE, entry_id)
+        row = store.find(MODULE, entry_id)
+        if row is None:
+            return None
+        detail = dict(row)
+        self._attach_forecast_check(detail)
+        return detail
 
     def create_entry(self, values: dict[str, Any]) -> tuple[dict[str, Any] | None, list[str]]:
         missing = [field for field in REQUIRED_FIELDS if not str(values.get(field) or "").strip()]
